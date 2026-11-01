@@ -3,7 +3,7 @@ name: Publish NutriTrack AI
 on:
   push:
     branches:
-      - karunyanandac-nutritrack-ai-app
+      - main
   workflow_dispatch:
 
 permissions:

@@ -93,6 +93,7 @@
   let foodSearch = "";
   let progressPeriod = 7;
   let recipeShuffle = 0;
+  let assistantMessages = [];
   let toastTimer;
 
   function save() {
@@ -163,11 +164,12 @@
       </aside>
       <div class="main-area">
         <header class="topbar"><div><div class="topbar-date">${esc(prettyDate(activeDate))}</div><div class="topbar-title">${esc(title)}</div></div>
-          <div class="topbar-actions"><button class="icon-button" aria-label="Toggle dark mode" data-action="theme">${state.theme === "dark" ? "☀" : "☾"}</button><button class="primary-button" data-action="add-food"><span>＋</span> Log food</button></div>
+          <div class="topbar-actions"><button class="icon-button" aria-label="Open nutrition companion" title="Ask your nutrition companion" data-action="assistant">✳</button><button class="icon-button" aria-label="Toggle dark mode" data-action="theme">${state.theme === "dark" ? "☀" : "☾"}</button><button class="primary-button" data-action="add-food"><span>＋</span> Log food</button></div>
         </header>
         <main class="content">${renderPage()}</main>
       </div>
       ${navMarkup("mobile-nav")}
+      <button class="assistant-fab" data-action="assistant" aria-label="Chat with your nutrition companion" title="Chat with your nutrition companion"><span>✳</span><span class="assistant-fab-label">Ask Nutri</span></button>
     `;
   }
 
@@ -218,7 +220,7 @@
         <section class="card meals-card">${cardTitle("Today's meals", `${day.meals.length} ${day.meals.length === 1 ? "entry" : "entries"}`, `<button class="card-link" data-action="navigate" data-page="food-log">View food log →</button>`)}${mealsHtml}</section>
         <section class="card water-card">${cardTitle("Water", "A gentle nudge to stay hydrated")}<div class="water-summary"><strong>${(day.water / 1000).toFixed(1)} L</strong><span>/ 2.0 L personal reminder</span></div><div class="progress-track"><div class="progress-fill" style="width:${Math.min(100, day.water / 20)}%;--macro-color:#6a9cdb"></div></div><div class="water-glasses">${Array.from({ length: 8 }, (_, i) => `<div class="water-glass ${day.water >= (i + 1) * 250 ? "filled" : ""}" aria-label="${day.water >= (i + 1) * 250 ? "Water logged" : "Water not logged"}">♧</div>`).join("")}</div><div class="water-footer"><button class="secondary-button small-button" data-action="water" data-amount="-250" ${day.water <= 0 ? "disabled" : ""}>− 250 ml</button><button class="secondary-button small-button" data-action="water" data-amount="250">＋ 250 ml</button></div></section>
         <section class="card recommend-card">${cardTitle("A meal idea for you", rec ? `Fits your remaining ${round(Math.max(0, remaining))} kcal` : "Based on what is left in your day", `<button class="card-link" data-action="navigate" data-page="planner">All recipes →</button>`)}${recommendationHtml}</section>
-        <section class="card coach-card">${cardTitle("Your nutrition companion", `<span class="coach-badge">✳ Local demo</span>`)}<p class="coach-message">${esc(coach)}</p><p class="disclaimer">General wellness information only—not a diagnosis or substitute for advice from a qualified healthcare professional.</p><button class="ghost-button small-button" data-action="coach">Get another tip →</button></section>
+        <section class="card coach-card">${cardTitle("Your nutrition companion", `<span class="coach-badge">✳ On-device insights</span>`)}<p class="coach-message">${esc(coach)}</p>${assistantInsightsMarkup()}<p class="disclaimer">Suggestions use this browser's food log and estimates—not medical advice or a live AI service.</p><button class="primary-button small-button" data-action="assistant">Ask Nutri a question →</button></section>
       </div>`;
   }
 
@@ -302,6 +304,157 @@
     if (remaining > goal.calories * .4) return "You have room for another meal or snack. Pair a familiar staple with a protein source and some vegetables for a satisfying plate.";
     if (f > 1.1) return "You've reached your estimated fat target. That's an estimate, not a limit—try focusing on a satisfying meal that matches your hunger.";
     return "Nice work checking in with yourself. Variety across meals matters; a colorful vegetable, fruit or pulse can add useful fiber and micronutrients.";
+  }
+
+  function assistantInsightsMarkup() {
+    const totals = totalsFor();
+    const goal = targets();
+    const remaining = goal.calories - totals.calories;
+    const day = dayFor();
+    const insights = [];
+
+    if (!state.profile.name) {
+      insights.push({ title: "Personalize your estimates", text: "A few profile details help make your daily targets more relevant.", action: "navigate", page: "profile", label: "Set up profile" });
+    }
+    if (!day.meals.length) {
+      insights.push({ title: "Start with what you eat", text: "Log a meal to get suggestions based on your actual day.", action: "add-food", label: "Log a meal" });
+    } else if (remaining < 0) {
+      insights.push({ title: `${Math.abs(round(remaining))} kcal above today's estimate`, text: "Logged totals are estimates, not a score. Choose your next meal based on hunger rather than trying to compensate.", action: "assistant", label: "Talk it through" });
+    } else {
+      const recipe = remaining > 0 ? recommendedRecipe(remaining, totals, goal) : null;
+      if (recipe) {
+        insights.push({ title: `${recipe.name} fits what remains`, text: `${recipe.calories} kcal · ${recipe.protein} g protein. A local recipe estimate within your ${round(remaining)} kcal remaining.`, action: "recipe-details", id: recipe.id, label: "View recipe" });
+      } else {
+        insights.push({ title: `${round(remaining)} kcal remaining`, text: "No recipe in the local catalogue fits this estimate. Your hunger and preferences matter more than a number.", action: "assistant", label: "Ask a question" });
+      }
+    }
+
+    const proteinLeft = goal.protein - totals.protein;
+    const proteinRecipe = remaining > 0
+      ? RECIPES.filter((recipe) => !dietExcluded(recipe) && recipe.protein >= 12 && recipe.calories <= remaining)
+        .sort((a, b) => b.protein - a.protein)[0]
+      : null;
+    if (proteinLeft >= 15 && proteinRecipe && !insights.some((insight) => insight.id === proteinRecipe.id)) {
+      insights.push({ title: "A protein-rich option is available", text: `${proteinRecipe.name} has an estimated ${proteinRecipe.protein} g protein in ${proteinRecipe.calories} kcal, within today's remaining estimate.`, action: "recipe-details", id: proteinRecipe.id, label: "See ingredients" });
+    } else if (day.meals.length && totals.fiber < 10) {
+      insights.push({ title: "Consider a fiber-rich addition", text: "A pulse, fruit or vegetable could add variety and fiber to a meal you already enjoy.", action: "navigate", page: "food-log", label: "Browse foods" });
+    }
+
+    if (day.water < 500) {
+      insights.push({ title: "Water check-in", text: `${day.water} ml logged toward your optional 2 L reminder. This is just a personal prompt; your fluid needs vary.`, action: "water", amount: "250", label: "Log 250 ml" });
+    }
+
+    return `<div class="assistant-insights" aria-label="Suggestions based on your local data">${insights.slice(0, 3).map((insight) => `
+      <article class="assistant-insight"><div><strong>${esc(insight.title)}</strong><p>${esc(insight.text)}</p></div><button class="ghost-button small-button" data-action="${esc(insight.action)}"${insight.id ? ` data-id="${esc(insight.id)}"` : ""}${insight.page ? ` data-page="${esc(insight.page)}"` : ""}${insight.amount ? ` data-amount="${esc(insight.amount)}"` : ""}>${esc(insight.label)} →</button></article>`).join("")}</div>`;
+  }
+
+  function weeklyAssistantSummary() {
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = shiftDate(new Date(), index - 6);
+      const day = state.entries[dateKey(date)];
+      const meals = day?.meals || [];
+      return {
+        calories: meals.reduce((sum, meal) => sum + num(meal.calories), 0),
+        protein: meals.reduce((sum, meal) => sum + num(meal.protein), 0),
+        logged: meals.length > 0
+      };
+    });
+    const logged = days.filter((day) => day.logged);
+    return {
+      count: logged.length,
+      calories: logged.length ? round(logged.reduce((sum, day) => sum + day.calories, 0) / logged.length) : 0,
+      protein: logged.length ? round(logged.reduce((sum, day) => sum + day.protein, 0) / logged.length) : 0
+    };
+  }
+
+  function assistantReply(prompt) {
+    const question = prompt.toLowerCase();
+    const totals = totalsFor();
+    const goal = targets();
+    const remaining = goal.calories - totals.calories;
+    const day = dayFor();
+    const mealNames = day.meals.map((meal) => meal.name).filter(Boolean);
+    const cta = (label, action, id) => ({ label, action, id });
+
+    if (/\b(week|weekly|trend|last 7|7.day)\b/.test(question)) {
+      const week = weeklyAssistantSummary();
+      if (!week.count) return { text: "There aren't any logged meals in the last seven days yet, so I can't summarize a weekly pattern. Once you log a few days, I can describe the averages. Missing entries mean the summary may be incomplete.", action: cta("View progress", "navigate", "progress") };
+      return { text: `Food was logged on ${week.count} of the last seven days. On logged days, your average is about ${week.calories} kcal and ${week.protein} g protein. These are descriptive averages from this browser only—not a measure of success, and unlogged food isn't included.`, action: cta("Open progress", "navigate", "progress") };
+    }
+
+    if (/\b(water|hydration|drink|thirst)\b/.test(question)) {
+      return { text: `You've logged ${round(day.water)} ml for ${prettyDate(activeDate)}. The 2 L shown in the app is an optional reminder, not a prescribed target; fluid needs depend on the person and situation.`, action: cta("Log 250 ml", "assistant-water", "250") };
+    }
+
+    if (/\b(protein|macro|macros|carbs?|carbohydrates?|fat|fiber|fibre|sugar)\b/.test(question)) {
+      const names = { protein: "protein", carb: "carbohydrates", carbs: "carbohydrates", carbohydrate: "carbohydrates", carbohydrates: "carbohydrates", fat: "fat", fiber: "fiber", fibre: "fiber", sugar: "sugar" };
+      const key = Object.keys(names).find((word) => question.includes(word));
+      const metricKey = key === "carb" || key === "carbs" || key === "carbohydrate" || key === "carbohydrates" ? "carbs" : key;
+      if (metricKey && ["protein", "carbs", "fat"].includes(metricKey)) {
+        const left = goal[metricKey] - totals[metricKey];
+        const description = left >= 0 ? `about ${round(left)} g below` : `about ${Math.abs(round(left))} g above`;
+        const recipe = metricKey === "protein" && remaining > 0
+          ? RECIPES.filter((item) => !dietExcluded(item) && item.protein >= 12 && item.calories <= remaining).sort((a, b) => b.protein - a.protein)[0]
+          : null;
+        const suggestion = metricKey === "protein"
+          ? recipe ? ` ${recipe.name} is a local estimate of ${recipe.protein} g protein and ${recipe.calories} kcal, within the remaining calorie estimate.` : " I couldn't find a protein-rich recipe that fits the remaining calorie estimate."
+          : " These macro targets are broad estimates; a varied meal that suits your preferences can still be a good choice.";
+        return { text: `Your logged ${names[key]} is ${round(totals[metricKey])} g against an estimated ${goal[metricKey]} g target (${description}).${suggestion}`, action: recipe ? cta("See recipe details", "recipe-details", recipe.id) : null, secondAction: recipe ? cta("Add to today's log", "assistant-log-recipe", recipe.id) : null };
+      }
+      if (!key) return { text: `Today's logged macros are ${round(totals.protein)} g protein, ${round(totals.carbs)} g carbohydrates, and ${round(totals.fat)} g fat. Estimated targets are ${goal.protein} g, ${goal.carbs} g, and ${goal.fat} g respectively. These are broad estimates, not strict limits.`, action: cta("Browse food options", "navigate", "food-log") };
+      const nutrient = key === "fiber" || key === "fibre" ? "fiber" : "sugar";
+      return { text: `Your food log shows about ${round(totals[nutrient])} g ${nutrient} for ${prettyDate(activeDate)}. This local catalogue is approximate, so treat it as a rough check-in rather than a precise measurement.`, action: cta("Browse foods", "navigate", "food-log") };
+    }
+
+    if (/\b(recipe|meal|eat|lunch|dinner|breakfast|snack|recommend|suggest)\b/.test(question)) {
+      const recipe = remaining > 0 ? recommendedRecipe(remaining, totals, goal) : null;
+      if (!recipe) return { text: `I don't have a recipe in the local catalogue that fits the ${Math.max(0, round(remaining))} kcal remaining estimate for ${prettyDate(activeDate)}. I won't suggest one that exceeds it as a fit. You can still browse the planner, and you don't need to eat to a calorie number.`, action: cta("Browse all recipes", "navigate", "planner") };
+      return { text: `${recipe.name} is a local recipe estimate of ${recipe.calories} kcal, which fits within your ${round(remaining)} kcal remaining estimate. It provides about ${recipe.protein} g protein. Check the ingredients and portion against your needs.`, action: cta("See recipe details", "recipe-details", recipe.id), secondAction: cta("Add to today's log", "assistant-log-recipe", recipe.id) };
+    }
+
+    if (/\b(profile|goal|target|calorie|calories|remaining|summary|today|doing|progress)\b/.test(question)) {
+      const balance = remaining >= 0 ? `${round(remaining)} kcal remaining` : `${Math.abs(round(remaining))} kcal over the estimate`;
+      const logged = mealNames.length ? `Logged so far: ${mealNames.join(", ")}.` : "No meals are logged yet.";
+      return { text: `${prettyDate(activeDate)}: ${round(totals.calories)} of an estimated ${goal.calories} kcal (${balance}). Protein ${round(totals.protein)}/${goal.protein} g, carbs ${round(totals.carbs)}/${goal.carbs} g, fat ${round(totals.fat)}/${goal.fat} g. ${logged} Targets are estimates and your log may be incomplete.`, action: cta("Log a meal", "add-food") };
+    }
+
+    return { text: `I can help with your logged meals, remaining calorie estimate, macros, water check-ins, or a seven-day summary. For ${prettyDate(activeDate)}, you've logged ${round(totals.calories)} of an estimated ${goal.calories} kcal. What would you like to look at?`, action: cta("Summarize today", "assistant-prompt", "Summarize today") };
+  }
+
+  const ASSISTANT_PROMPTS = ["Summarize today", "What fits my macros?", "Am I getting enough protein?", "How is my week?"];
+
+  function renderAssistantMessages() {
+    const thread = $("#assistant-thread");
+    if (!thread) return;
+    const renderAction = (action, style) => `<button class="${style} small-button" data-action="${esc(action.action)}"${action.action === "navigate" ? ` data-page="${esc(action.id)}"` : action.action === "assistant-prompt" ? ` data-prompt="${esc(action.id)}"` : action.id ? ` data-id="${esc(action.id)}"` : ""}>${esc(action.label)}</button>`;
+    thread.innerHTML = assistantMessages.map((message) => `<div class="assistant-bubble ${message.role === "user" ? "user" : "agent"}"><span>${message.role === "user" ? "You" : "Nutri · local insight"}</span><p>${esc(message.text)}</p>${message.action ? `<div class="assistant-bubble-actions">${renderAction(message.action, "secondary-button")}${message.secondAction ? renderAction(message.secondAction, "primary-button") : ""}</div>` : ""}</div>`).join("");
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  function openAssistant() {
+    if (!assistantMessages.length) assistantMessages.push({ role: "assistant", text: "Hi! I can describe your local food log, estimate what remains, explore macros, and find a recipe that fits. What would you like to know?" });
+    const quickPrompts = ASSISTANT_PROMPTS.map((prompt) => `<button class="filter-chip" data-action="assistant-prompt" data-prompt="${esc(prompt)}">${esc(prompt)}</button>`).join("");
+    openModal("Your nutrition companion", "Local insights from your food log · not a live AI service", `
+      <div class="assistant-notice"><strong>🔒 Your data stays in this browser.</strong> Replies use your saved profile and logged meals; no AI provider or server is connected. Estimates may be incomplete.</div>
+      <div id="assistant-thread" class="assistant-thread" role="log" aria-live="polite" aria-label="Conversation"></div>
+      <div class="assistant-prompts" aria-label="Suggested questions">${quickPrompts}</div>
+      <form id="assistant-form" class="assistant-form"><label class="sr-only" for="assistant-prompt-input">Ask your nutrition companion</label><input id="assistant-prompt-input" name="prompt" type="text" maxlength="240" required autocomplete="off" placeholder="Ask about your meals, macros, or progress"><button class="primary-button" type="submit">Send</button></form>
+      <p class="disclaimer assistant-disclaimer">General wellness information only—not medical advice or a substitute for a qualified healthcare professional. Double-check recipes and allergens.</p>`);
+    $(".modal", $("#modal-root")).classList.add("assistant-modal");
+    renderAssistantMessages();
+    $("#assistant-prompt-input")?.focus();
+  }
+
+  function submitAssistantPrompt(prompt) {
+    const text = String(prompt || "").trim();
+    if (!text || text.length > 240) return;
+    assistantMessages.push({ role: "user", text });
+    const reply = assistantReply(text);
+    assistantMessages.push({ role: "assistant", text: reply.text, action: reply.action, secondAction: reply.secondAction });
+    if (assistantMessages.length > 24) assistantMessages = assistantMessages.slice(-24);
+    renderAssistantMessages();
+    const input = $("#assistant-prompt-input");
+    if (input) { input.value = ""; input.focus(); }
   }
 
   function renderFoodLog() {
@@ -601,6 +754,33 @@
     if (!button) return;
     const { action, id, page } = button.dataset;
     if (action === "navigate") { activePage = page; render(); return; }
+    if (action === "assistant") { openAssistant(); return; }
+    if (action === "assistant-prompt") { submitAssistantPrompt(button.dataset.prompt || id); return; }
+    if (action === "assistant-water") {
+      dayFor().water = Math.max(0, dayFor().water + num(id));
+      if (save()) { render(); assistantMessages.push({ role: "assistant", text: `${num(id)} ml added to your ${prettyDate(activeDate)} water check-in.` }); renderAssistantMessages(); toast("Water check-in updated."); }
+      return;
+    }
+    if (action === "assistant-log-recipe") {
+      const recipe = RECIPES.find((item) => item.id === id);
+      const remaining = targets().calories - totalsFor().calories;
+      if (!recipe || recipe.calories > Math.max(0, remaining) || dietExcluded(recipe)) {
+        assistantMessages.push({ role: "assistant", text: "That recipe no longer fits the remaining calorie estimate or your current preference filter, so I didn't add it. Ask me for an updated suggestion instead." });
+        renderAssistantMessages();
+        return;
+      }
+      const meal = { ...recipe, id: newId(), mealType: "Snack", servingCount: 1, serving: recipe.serving };
+      dayFor().meals.push(meal);
+      if (save()) {
+        render();
+        assistantMessages.push({ role: "assistant", text: `${recipe.name} was added to today's food log. Your dashboard suggestions now reflect the updated totals.` });
+        renderAssistantMessages();
+        toast(`${recipe.name} added to today's food log.`);
+      } else {
+        dayFor().meals = dayFor().meals.filter((entry) => entry.id !== meal.id);
+      }
+      return;
+    }
     if (action === "theme") { state.theme = state.theme === "dark" ? "light" : "dark"; if (save()) render(); return; }
     if (action === "add-food") { addFoodModal(); return; }
     if (action === "close-modal") { button.closest(".modal-backdrop")?.remove(); return; }
@@ -668,7 +848,6 @@
     }
     if (action === "export-data") { exportData(); return; }
     if (action === "delete-data") { deleteData(); return; }
-    if (action === "coach") { showToast(coachCopy(totalsFor(), targets(), targets().calories - totalsFor().calories)); return; }
   }
 
   function datePicker() {
@@ -713,6 +892,12 @@
     const form = event.target;
     const formId = form?.getAttribute("id");
     if (!formId) return;
+    if (formId === "assistant-form") {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      submitAssistantPrompt(new FormData(form).get("prompt"));
+      return;
+    }
     if (formId === "food-form") {
       event.preventDefault();
       if (!form.reportValidity()) return;
@@ -806,6 +991,7 @@
     if (button.dataset.action === "confirm-delete") {
       try { localStorage.removeItem(STORE_KEY); } catch (error) { console.error("Could not remove local data.", error); return toast("Browser storage couldn't remove the data.", true); }
       state = defaultState();
+      assistantMessages = [];
       activeDate = new Date();
       activePage = "dashboard";
       button.closest(".modal-backdrop")?.remove();

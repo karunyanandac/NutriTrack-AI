@@ -12,10 +12,11 @@ The `Publish NutriTrack AI` workflow deploys this static site on pushes to the `
 - Indian foods, editable recipe ideas, daily/weekly meal planning, recipe replacement and portion adjustment, and ingredient-based shopping lists.
 - Seven- and 30-day summaries, food-log charts, weight check-ins, profile preferences, dark mode, and local JSON export/deletion.
 - A local sample barcode lookup. The photo panel previews an image locally and supports a manually entered nutrition estimate.
+- A nutrition companion with automatically refreshed, log-based dashboard suggestions, an interactive chat for today's calorie/macro totals and seven-day summaries, and quick actions to browse or log a fitting recipe.
 
 ## Local-demo boundaries
 
-This repository does not configure a sign-in provider, backend, database, external nutrition catalogue, camera barcode service, image-recognition model, or live AI assistant. The “AI” recommendations and companion tips are deterministic local rules, recipe and food nutrition values are illustrative estimates, and photo estimates must be entered by the user. The barcode field only looks up a few hard-coded sample codes. Do not treat this demo as a source of verified allergen or clinical nutrition information.
+This repository does not configure a sign-in provider, backend, database, external nutrition catalogue, camera barcode service, image-recognition model, or live AI service. The “AI” recommendations and companion replies are deterministic local rules based on the profile and food log in this browser; dashboard suggestions refresh when app data changes, and chat messages stay in memory until the page is reloaded. These features do not send data to an AI provider. Recipe and food nutrition values are illustrative estimates, and photo estimates must be entered by the user. The barcode field only looks up a few hard-coded sample codes. Do not treat this demo as a source of verified allergen or clinical nutrition information.
 
 Data is saved in this browser's `localStorage`, without accounts, cloud sync, encryption, or secure per-user isolation. Other people with access to the same browser profile may be able to read it. Use the profile page to export or delete local data. No data leaves the browser through the app.
 

@@ -26,7 +26,7 @@ NutriTrack AI is a responsive nutrition-tracking demo built with plain HTML, CSS
 ## Features
 
 - **Daily dashboard:** estimated calorie and macro targets, logged meals, water check-ins, and meal ideas.
-- **Food logging:** Indian food catalogue, custom foods, editable portions, favorites, recent entries, and date-specific logs.
+- **Food logging:** Indian food catalogue, your own saved custom-food library with per-serving nutrition, editable portions, favorites, recent entries, and date-specific logs.
 - **Meal planning:** recipe ideas, daily and weekly plans, portion adjustments, replacements, and categorized shopping lists.
 - **Progress:** seven- and 30-day summaries, food-log charts, and weight check-ins.
 - **Nutrition companion:** use the built-in local food catalogue for reference nutrition questions, or configure the optional OpenAI proxy for broader conversational answers with web search and source links. Daily nutrition context is opt-in.
@@ -63,7 +63,7 @@ The Worker uses OpenAI's Responses API (`gpt-4.1-mini`) with web search, a 900-t
 
 ## Transparency, privacy, and health
 
-- The default experience is local-first. Profile, planner, check-ins, food logs, assistant endpoint URL, and related data are saved in this browser's `localStorage`; they are not encrypted or securely isolated per user. Anyone with access to the browser profile may be able to read them.
+- The default experience is local-first. Profile, saved custom foods, planner, check-ins, food logs, assistant endpoint URL, and related data are saved in this browser's `localStorage`; they are not encrypted or securely isolated per user. Anyone with access to the browser profile may be able to read them.
 - When the OpenAI endpoint is configured, each question and up to eight recent chat turns are sent to the Worker and OpenAI. The Worker does not log prompts or API secrets. Logged food names and nutrition totals are sent only when the user explicitly checks the assistant's **Include today's logged foods and nutrition totals** option. Do not enter sensitive personal identifiers.
 - OpenAI answers and web sources can be incomplete, outdated, or wrong. Web search does not guarantee accuracy, and the assistant must not be used as a nutrition database, diagnosis, treatment, or emergency service. Verify food values against labels or reliable sources; serving size, brand, ingredients, and preparation all matter.
 - Without an OpenAI endpoint, the companion and meal recommendations use deterministic rules and the small food/recipe catalogue in the browser; chat messages remain in memory until the page reloads. If a food is not in the catalogue, the companion says so rather than inventing nutrition facts.

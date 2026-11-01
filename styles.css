@@ -206,8 +206,11 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
 .food-details { min-width: 0; flex: 1; }
 .food-details strong, .food-details span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .food-details strong { font-size: 12px; }
+.food-details strong .custom-food-badge { display: inline-block; border-radius: 99px; background: var(--green-light); padding: 2px 6px; color: var(--green-dark); font-size: 8px; font-weight: 700; vertical-align: 1px; }
 .food-details span { margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .food-kcal { white-space: nowrap; color: var(--green-dark); font-size: 10px; font-weight: 800; }
+.custom-food-actions { display: flex; flex: 0 0 auto; gap: 2px; }
+.custom-food-actions .icon-plain { width: 27px; height: 30px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
 .planner-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(270px, .8fr); gap: 20px; align-items: start; }
 .day-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 7px; margin-bottom: 21px; }
 .day-button { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 9px 3px; color: var(--muted); cursor: pointer; text-align: center; }
@@ -380,5 +383,6 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
   .food-item { gap: 7px; padding: 9px; }
   .food-item .icon-plain { width: 28px; height: 32px; }
   .food-item .meal-emoji { width: 34px; height: 34px; }
+  .custom-food-actions .icon-plain { width: 25px; height: 29px; }
   .page-heading .heading-actions { width: 100%; }
 }

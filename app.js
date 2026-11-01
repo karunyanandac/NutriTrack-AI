@@ -63,6 +63,7 @@
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const num = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const round = (value) => Math.round(num(value));
+  const displayGrams = (value) => Number.isInteger(num(value)) ? String(num(value)) : num(value).toFixed(1);
   const newId = () => globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const pad = (value) => String(value).padStart(2, "0");
   const dateKey = (date = new Date()) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -70,7 +71,7 @@
   const prettyDate = (date) => new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(date);
   const emptyDay = () => ({ meals: [], water: 0 });
   const DEFAULT_PROFILE = { name: "", age: 30, gender: "", height: 165, weight: 65, targetWeight: 60, activity: 1.4, goal: "lose", calorieGoal: 0, diet: "No preference", allergies: "", cuisine: "South Indian" };
-  const defaultState = () => ({ profile: { ...DEFAULT_PROFILE }, theme: "light", entries: {}, planner: {}, favorites: [], savedRecipes: [], shoppingChecks: {}, weights: [], aiEndpoint: "" });
+  const defaultState = () => ({ profile: { ...DEFAULT_PROFILE }, theme: "light", entries: {}, planner: {}, favorites: [], savedRecipes: [], shoppingChecks: {}, weights: [], customFoods: [], aiEndpoint: "" });
 
   function loadState() {
     try {
@@ -85,6 +86,7 @@
         savedRecipes: Array.isArray(saved.savedRecipes) ? saved.savedRecipes : [],
         shoppingChecks: saved.shoppingChecks && typeof saved.shoppingChecks === "object" ? saved.shoppingChecks : {},
         weights: Array.isArray(saved.weights) ? saved.weights : [],
+        customFoods: Array.isArray(saved.customFoods) ? saved.customFoods.filter((food) => food && typeof food.id === "string" && food.id.startsWith("custom-") && typeof food.name === "string" && typeof food.serving === "string" && MEAL_TYPES.includes(food.category)).slice(0, 100).map((food) => ({ ...food, id: food.id.slice(0, 100), name: food.name.trim().slice(0, 80), serving: food.serving.trim().slice(0, 50), emoji: typeof food.emoji === "string" ? food.emoji : "🍽️", calories: Math.min(5000, Math.max(0, round(num(food.calories)))), protein: Math.min(500, Math.max(0, num(food.protein))), carbs: Math.min(500, Math.max(0, num(food.carbs))), fat: Math.min(500, Math.max(0, num(food.fat))), fiber: Math.min(500, Math.max(0, num(food.fiber))), sugar: Math.min(500, Math.max(0, num(food.sugar))), custom: true })) : [],
         aiEndpoint: typeof saved.aiEndpoint === "string" ? saved.aiEndpoint : ""
       };
     } catch (error) {
@@ -662,13 +664,13 @@
     const day = dayFor();
     const action = `<button class="primary-button small-button" data-action="add-food">＋ Add food</button>`;
     const search = `<div class="search-box"><span>⌕</span><input id="food-search" type="search" value="${esc(foodSearch)}" placeholder="Search foods, meals and ingredients…" aria-label="Search foods"></div>`;
-    const foodItems = FOODS.filter((food) => (foodCategory === "All" || food.category === foodCategory) && `${food.name} ${food.cuisine}`.toLowerCase().includes(foodSearch.toLowerCase()));
+    const foodItems = foodLibrary().filter((food) => (foodCategory === "All" || food.category === foodCategory) && `${food.name} ${food.serving} ${food.category} ${food.cuisine || ""}`.toLowerCase().includes(foodSearch.toLowerCase()));
     return `${heading("Food log", "Keep a flexible record of meals, portions and nutrition.", action)}
       <div class="welcome-banner"><p><strong>${esc(prettyDate(activeDate))}</strong> · ${round(t.calories)} of ${goal.calories} ${goal.manual ? "kcal personal target" : "estimated kcal"} · ${day.meals.length} logged ${day.meals.length === 1 ? "food" : "foods"}</p><button class="secondary-button small-button" data-action="pick-date">Change day</button></div>
       <div class="stats-grid"><div class="stat-card"><span>Calories · remaining</span><strong>${Math.abs(round(goal.calories - t.calories))}<small>${goal.calories - t.calories < 0 ? "over" : "kcal left"}</small></strong></div><div class="stat-card"><span>Protein · target ${goal.protein}g</span><strong>${round(t.protein)}<small>g</small></strong></div><div class="stat-card"><span>Carbs · target ${goal.carbs}g</span><strong>${round(t.carbs)}<small>g</small></strong></div></div>
       <div class="grid food-log-layout">
-        <section class="card">${cardTitle("Search foods", "Approximate reference values per serving") }<div class="food-toolbar">${search}</div><div class="food-filters">${CATEGORIES.map((category) => `<button class="filter-chip ${foodCategory === category ? "active" : ""}" data-action="food-category" data-category="${category}">${category}</button>`).join("")}</div>
-        <div class="food-list">${foodItems.map(foodCard).join("") || `<div class="empty-state"><strong>No foods match that search</strong><p>Try a different search or log a custom meal.</p></div>`}</div></section>
+        <section class="card">${cardTitle("Search foods", "Built-in foods plus your saved custom foods", `<button class="secondary-button small-button" data-action="create-custom-food">＋ Create custom food</button>`)}<div class="food-toolbar">${search}</div><div class="food-filters">${CATEGORIES.map((category) => `<button class="filter-chip ${foodCategory === category ? "active" : ""}" data-action="food-category" data-category="${category}">${category}</button>`).join("")}</div>
+        <div class="food-list">${foodItems.map(foodCard).join("") || `<div class="empty-state"><strong>No foods match that search</strong><p>Try another search, or create a custom food to save it for next time.</p><button class="secondary-button small-button" data-action="create-custom-food">＋ Create custom food</button></div>`}</div></section>
         <div class="grid"><section class="card">${cardTitle("Logged today", "Select edit to update a portion")}${day.meals.length ? day.meals.slice().reverse().map((meal) => mealRow(meal, true)).join("") : `<div class="empty-state"><strong>Nothing logged yet</strong><p>Add a food or recipe to see totals here.</p><button class="secondary-button small-button" data-action="add-food">Log first food</button></div>`}
           <div class="macro-footer"><span>Fiber <strong>${round(t.fiber)}g</strong></span><span>Sugar <strong>${round(t.sugar)}g</strong></span><span>Fat <strong>${round(t.fat)}g</strong></span></div>
         </section><section class="card">${cardTitle("Add a barcode", `<span class="coach-badge">Local demo lookup</span>`)}<p class="card-subtitle">A barcode scanner service isn't connected. Enter one of the sample codes or use the food search.</p><div class="food-toolbar" style="margin-top:12px"><input id="barcode-input" aria-label="Barcode number" inputmode="numeric" placeholder="Enter barcode number"><button class="secondary-button small-button" data-action="barcode-lookup">Look up</button></div><div class="disclaimer">Sample codes look up a small local demo catalogue. No camera or external database is used.</div></section>
@@ -680,7 +682,11 @@
   }
 
   function favoriteFoods() {
-    return FOODS.filter((food) => state.favorites.includes(food.id));
+    return foodLibrary().filter((food) => state.favorites.includes(food.id));
+  }
+
+  function foodLibrary() {
+    return [...FOODS, ...state.customFoods];
   }
 
   function recentEntries() {
@@ -697,7 +703,8 @@
 
   function foodCard(food) {
     const isFavorite = state.favorites.includes(food.id);
-    return `<div class="food-item"><div class="meal-emoji">${esc(food.emoji)}</div><div class="food-details"><strong>${esc(food.name)}</strong><span>${esc(food.serving)} · P ${food.protein}g · C ${food.carbs}g · F ${food.fat}g</span></div><span class="food-kcal">${food.calories}</span><button class="icon-plain" title="${isFavorite ? "Remove favorite" : "Save favorite"}" aria-label="${isFavorite ? "Remove favorite" : "Save favorite"} ${esc(food.name)}" data-action="favorite-food" data-id="${esc(food.id)}">${isFavorite ? "♥" : "♡"}</button><button class="icon-plain" title="Add ${esc(food.name)}" aria-label="Add ${esc(food.name)} to food log" data-action="add-library-food" data-id="${esc(food.id)}">＋</button></div>`;
+    const customActions = food.custom ? `<button class="icon-plain" title="Edit saved food" aria-label="Edit ${esc(food.name)}" data-action="edit-custom-food" data-id="${esc(food.id)}">✎</button><button class="icon-plain" title="Remove saved food" aria-label="Remove ${esc(food.name)} from saved foods" data-action="delete-custom-food" data-id="${esc(food.id)}">×</button>` : "";
+    return `<div class="food-item"><div class="meal-emoji">${esc(food.emoji || "🍽️")}</div><div class="food-details"><strong>${esc(food.name)}${food.custom ? ` <span class="custom-food-badge">Custom</span>` : ""}</strong><span>${esc(food.serving)} · P ${displayGrams(food.protein)}g · C ${displayGrams(food.carbs)}g · F ${displayGrams(food.fat)}g</span></div><span class="food-kcal">${round(food.calories)}</span><button class="icon-plain" title="${isFavorite ? "Remove favorite" : "Save favorite"}" aria-label="${isFavorite ? "Remove favorite" : "Save favorite"} ${esc(food.name)}" data-action="favorite-food" data-id="${esc(food.id)}">${isFavorite ? "♥" : "♡"}</button><button class="icon-plain" title="Add ${esc(food.name)}" aria-label="Add ${esc(food.name)} to food log" data-action="add-library-food" data-id="${esc(food.id)}">＋</button>${customActions ? `<span class="custom-food-actions">${customActions}</span>` : ""}</div>`;
   }
 
   function weekDates(start = activeDate) {
@@ -812,7 +819,7 @@
     return `${heading("Your profile", "Personalize your estimates and discover meals that fit your preferences.")}
       <div class="profile-layout"><section class="card">${cardTitle("A little about you", "All fields stay in this browser on this device")}${profileForm}</section>
       <aside class="grid"><section class="card">${cardTitle(goal.manual ? "Your target guidance" : "How targets are estimated", goal.manual ? "Manual calorie target and scaled macros" : "Transparent, adjustable guidance")}${summary}<div class="callout" style="margin-top:12px">Calorie needs vary widely. The 1,200 kcal minimum is a conservative app floor, not a recommendation. Seek advice from a registered dietitian or clinician if you have a medical condition, are pregnant, or are under 18.</div></section>
-      <section class="card">${cardTitle("Your data & privacy", "No account or cloud-synced storage")}<p class="card-subtitle">Profile, food log, planner, favorites and check-ins are stored in this browser's local storage and are not synced. If OpenAI is configured, chat messages go to OpenAI through the Worker; food names and nutrition totals are sent only when you opt in in chat. Anyone using this browser profile may be able to access local data. This is not secure health-record storage.</p><div class="heading-actions" style="margin-top:15px"><button class="secondary-button small-button" data-action="export-data">Export my data</button><button class="danger-button small-button" data-action="delete-data">Delete all local data</button></div><p class="disclaimer" style="margin-top:12px">Deleting local data cannot revoke screenshots, downloads or browser backups. Exported JSON files may contain sensitive personal information.</p></section></aside></div>`;
+      <section class="card">${cardTitle("Your data & privacy", "No account or cloud-synced storage")}<p class="card-subtitle">Profile, food log, saved custom foods, planner, favorites and check-ins are stored in this browser's local storage and are not synced. If OpenAI is configured, chat messages go to OpenAI through the Worker; food names and nutrition totals are sent only when you opt in in chat. Anyone using this browser profile may be able to access local data. This is not secure health-record storage.</p><div class="heading-actions" style="margin-top:15px"><button class="secondary-button small-button" data-action="export-data">Export my data</button><button class="danger-button small-button" data-action="delete-data">Delete all local data</button></div><p class="disclaimer" style="margin-top:12px">Deleting local data cannot revoke screenshots, downloads or browser backups. Exported JSON files may contain sensitive personal information.</p></section></aside></div>`;
   }
 
   function openModal(title, subtitle, body) {
@@ -874,9 +881,59 @@
   }
 
   function addLibraryFood(id) {
-    const food = FOODS.find((item) => item.id === id);
+    const food = foodLibrary().find((item) => item.id === id);
     if (!food) return;
     addFoodModal(food, null, { mealType: food.category === "Snack" ? "Snack" : food.category, emoji: food.emoji, servingCount: 1 });
+  }
+
+  function customFoodModal(food = null) {
+    const values = food || { name: "", serving: "1 serving", category: "Snack", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 };
+    const fields = [["calories", "Calories · kcal", 5000], ["protein", "Protein · g", 500], ["carbs", "Carbohydrates · g", 500], ["fat", "Fat · g", 500], ["fiber", "Fiber · g", 500], ["sugar", "Sugar · g", 500]];
+    openModal(food ? "Edit saved custom food" : "Create a custom food", "Save a food and its per-serving nutrition here. It will be available from search whenever you log meals.", `<form id="custom-food-form"><input type="hidden" name="id" value="${esc(food?.id || "")}"><div class="form-grid"><div class="field full"><label for="custom-food-name">Food name</label><input id="custom-food-name" name="name" maxlength="80" required value="${esc(values.name)}" placeholder="e.g. Homemade ragi dosa"></div><div class="field"><label for="custom-food-serving">Serving size / portion</label><input id="custom-food-serving" name="serving" maxlength="50" required value="${esc(values.serving)}" placeholder="e.g. 2 dosa · 150 g"></div><div class="field"><label for="custom-food-category">Meal category</label><select id="custom-food-category" name="category">${MEAL_TYPES.map((type) => `<option ${values.category === type ? "selected" : ""}>${type}</option>`).join("")}</select></div>${fields.map(([name, label, max]) => `<div class="field"><label for="custom-food-${name}">${label} per serving</label><input id="custom-food-${name}" name="${name}" type="number" min="0" max="${max}" step="0.1" value="${esc(num(values[name]))}" required></div>`).join("")}</div><p class="disclaimer">Enter your best estimate for one serving. Values are saved on this device and are not verified nutrition data.</p><div class="form-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button class="primary-button">${food ? "Save custom food" : "Save to my foods"}</button></div></form>`);
+  }
+
+  function saveCustomFood(values) {
+    const id = String(values.id || "");
+    const name = String(values.name || "").trim().slice(0, 80);
+    const serving = String(values.serving || "").trim().slice(0, 50);
+    if (!name || !serving || !MEAL_TYPES.includes(values.category)) return toast("Enter a food name, serving size, and meal category.", true);
+    if (id && !state.customFoods.some((food) => food.id === id)) return toast("That saved custom food could not be found. Search again and retry.", true);
+    const duplicate = state.customFoods.find((food) => food.name.toLocaleLowerCase() === name.toLocaleLowerCase() && food.id !== id);
+    if (duplicate) return toast("A saved custom food already uses that name. Edit that food instead.", true);
+    if (!id && state.customFoods.length >= 100) return toast("You can save up to 100 custom foods on this device.", true);
+    const food = {
+      id: id || `custom-${newId()}`,
+      name,
+      emoji: "🍽️",
+      serving,
+      category: values.category,
+      calories: round(num(values.calories)),
+      protein: round(num(values.protein) * 10) / 10,
+      carbs: round(num(values.carbs) * 10) / 10,
+      fat: round(num(values.fat) * 10) / 10,
+      fiber: round(num(values.fiber) * 10) / 10,
+      sugar: round(num(values.sugar) * 10) / 10,
+      custom: true
+    };
+    const index = state.customFoods.findIndex((entry) => entry.id === id);
+    const previous = index >= 0 ? state.customFoods[index] : null;
+    if (index >= 0) state.customFoods[index] = food;
+    else state.customFoods.push(food);
+    if (save()) {
+      $("#modal-root").querySelector(".modal-backdrop")?.remove();
+      render();
+      toast(index >= 0 ? `${name} updated in your saved foods.` : `${name} saved. Search for it whenever you log food.`);
+    } else if (index >= 0) {
+      state.customFoods[index] = previous;
+    } else {
+      state.customFoods.pop();
+    }
+  }
+
+  function confirmDeleteCustomFood(id) {
+    const food = state.customFoods.find((item) => item.id === id);
+    if (!food) return toast("That saved custom food could not be found.", true);
+    openModal(`Remove ${food.name}?`, "This removes it from your saved food search and favorites. Previously logged entries will stay in your diary.", `<p class="callout">You can add it again later from Search foods. Existing food logs will not be changed.</p><div class="form-actions"><button class="secondary-button" data-action="close-modal">Keep food</button><button class="danger-button" data-action="confirm-delete-custom-food" data-id="${esc(id)}">Remove saved food</button></div>`);
   }
 
   function repeatFood(id, date) {
@@ -888,7 +945,7 @@
       servingCount: servings,
       ...Object.fromEntries(["calories", "protein", "carbs", "fat", "fiber", "sugar"].map((key) => [key, num(meal[key]) / servings]))
     };
-    const food = FOODS.find((item) => item.id === meal.foodId);
+    const food = foodLibrary().find((item) => item.id === meal.foodId);
     addFoodModal(food ? { ...food, ...preset } : null, null, preset);
   }
 
@@ -987,6 +1044,13 @@
     if (action === "add-food") { addFoodModal(); return; }
     if (action === "close-modal") { button.closest(".modal-backdrop")?.remove(); return; }
     if (action === "food-category") { foodCategory = button.dataset.category; render(); return; }
+    if (action === "create-custom-food") { customFoodModal(); return; }
+    if (action === "edit-custom-food") {
+      const food = state.customFoods.find((item) => item.id === id);
+      if (food) customFoodModal(food);
+      return;
+    }
+    if (action === "delete-custom-food") { confirmDeleteCustomFood(id); return; }
     if (action === "add-library-food") { addLibraryFood(id); return; }
     if (action === "favorite-food") { toggleFavorite(id); return; }
     if (action === "repeat-food") { repeatFood(id, button.dataset.date); return; }
@@ -1088,7 +1152,7 @@
   }
 
   function deleteData() {
-    openModal("Delete all local data?", "This permanently removes the profile, food log, plans, favorites and weight check-ins from this browser.", `<p class="callout">There is no account or cloud copy to delete. Download an export first if you'd like to keep a copy.</p><div class="form-actions"><button class="secondary-button" data-action="close-modal">Keep my data</button><button class="danger-button" data-action="confirm-delete">Delete everything</button></div>`);
+    openModal("Delete all local data?", "This permanently removes your profile, food log, saved custom foods, plans, favorites and weight check-ins from this browser.", `<p class="callout">There is no account or cloud copy to delete. Download an export first if you'd like to keep a copy.</p><div class="form-actions"><button class="secondary-button" data-action="close-modal">Keep my data</button><button class="danger-button" data-action="confirm-delete">Delete everything</button></div>`);
   }
 
   function handleSubmit(event) {
@@ -1108,6 +1172,12 @@
       const foodId = data.foodId;
       const food = FOODS.find((item) => item.id === foodId);
       addMealEntry({ ...data, emoji: food?.emoji || data.emoji || "🍽️" });
+      return;
+    }
+    if (formId === "custom-food-form") {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      saveCustomFood(Object.fromEntries(new FormData(form).entries()));
       return;
     }
     if (formId === "profile-form") {
@@ -1211,6 +1281,21 @@
       button.closest(".modal-backdrop")?.remove();
       render();
       toast("All NutriTrack data was deleted from this browser.");
+    }
+    if (button.dataset.action === "confirm-delete-custom-food") {
+      const index = state.customFoods.findIndex((food) => food.id === button.dataset.id);
+      if (index < 0) return toast("That saved custom food could not be found.", true);
+      const [removed] = state.customFoods.splice(index, 1);
+      const wasFavorite = state.favorites.includes(removed.id);
+      state.favorites = state.favorites.filter((favorite) => favorite !== removed.id);
+      if (save()) {
+        button.closest(".modal-backdrop")?.remove();
+        render();
+        toast(`${removed.name} removed from your saved foods. Existing logs were kept.`);
+      } else {
+        state.customFoods.splice(index, 0, removed);
+        if (wasFavorite) state.favorites.push(removed.id);
+      }
     }
   }
 

@@ -114,6 +114,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .stat-value small { font-size: 10px; font-weight: 500; }
 .calorie-insight { position: relative; z-index: 1; max-width: 250px; flex: 0 1 225px; color: rgba(255,255,255,.8); font-size: 12px; line-height: 1.75; }
 .calorie-insight strong { display: block; margin: 9px 0 5px; color: white; font-family: Manrope, sans-serif; font-size: 13px; }
+.calorie-goal-control { display: grid; gap: 8px; margin-top: 13px; }
+.calorie-goal-control > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; font-size: 10px; }
+.calorie-goal-control > span strong { display: inline; margin: 0; font-size: inherit; }
+.calorie-goal-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+.calorie-goal-control .secondary-button { border-color: rgba(255,255,255,.32); background: rgba(255,255,255,.12); color: #fff; }
+.profile-layout .calorie-goal-control { margin: 14px 0; border-top: 1px solid var(--line); padding-top: 13px; color: var(--muted); }
+.profile-layout .calorie-goal-control > span strong { color: var(--ink); }
+.profile-layout .calorie-goal-control .secondary-button { border-color: var(--line); background: var(--surface); color: var(--ink); }
 .macro-card { grid-column: span 5; }
 .macro-item + .macro-item { margin-top: 18px; }
 .macro-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 11px; }
@@ -163,11 +171,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .assistant-modal { display: flex; width: min(660px, 100%); flex-direction: column; }
 .assistant-notice { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); padding: 11px 13px; color: var(--muted); font-size: 10px; line-height: 1.6; }
 .assistant-notice strong { color: var(--ink); }
+.assistant-consent { display: flex; align-items: flex-start; gap: 9px; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); padding: 10px 12px; color: var(--muted); font-size: 10px; line-height: 1.55; cursor: pointer; }
+.assistant-consent input { width: 16px; min-height: 16px; flex: 0 0 auto; margin: 1px 0 0; accent-color: var(--green); }
 .assistant-thread { display: grid; min-height: 120px; max-height: min(34vh, 300px); overflow-y: auto; align-content: start; gap: 11px; border: 1px solid var(--line); border-radius: 13px; background: var(--page); padding: 12px; scroll-behavior: smooth; }
 .assistant-bubble { width: fit-content; max-width: 90%; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); padding: 10px 12px; }
 .assistant-bubble.user { justify-self: end; border-color: color-mix(in srgb, var(--green) 28%, var(--line)); background: var(--green-light); }
 .assistant-bubble > span { display: block; color: var(--muted); font-size: 9px; font-weight: 700; }
 .assistant-bubble > p { margin: 5px 0 0; font-size: 11px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant-sources { display: grid; gap: 5px; margin-top: 9px; border-top: 1px solid var(--line); padding-top: 8px; }
+.assistant-sources > span { color: var(--muted); font-size: 9px; font-weight: 700; }
+.assistant-sources a { overflow-wrap: anywhere; color: var(--green); font-size: 10px; line-height: 1.5; text-decoration: underline; text-underline-offset: 2px; }
 .assistant-bubble-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
 .assistant-prompts { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
 .assistant-prompts .filter-chip { max-width: 100%; padding: 7px 10px; text-align: left; }

@@ -70,7 +70,7 @@
   const prettyDate = (date) => new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(date);
   const emptyDay = () => ({ meals: [], water: 0 });
   const DEFAULT_PROFILE = { name: "", age: 30, gender: "", height: 165, weight: 65, targetWeight: 60, activity: 1.4, goal: "lose", calorieGoal: 0, diet: "No preference", allergies: "", cuisine: "South Indian" };
-  const defaultState = () => ({ profile: { ...DEFAULT_PROFILE }, theme: "light", entries: {}, planner: {}, favorites: [], savedRecipes: [], shoppingChecks: {}, weights: [] });
+  const defaultState = () => ({ profile: { ...DEFAULT_PROFILE }, theme: "light", entries: {}, planner: {}, favorites: [], savedRecipes: [], shoppingChecks: {}, weights: [], aiEndpoint: "" });
 
   function loadState() {
     try {
@@ -84,7 +84,8 @@
         favorites: Array.isArray(saved.favorites) ? saved.favorites : [],
         savedRecipes: Array.isArray(saved.savedRecipes) ? saved.savedRecipes : [],
         shoppingChecks: saved.shoppingChecks && typeof saved.shoppingChecks === "object" ? saved.shoppingChecks : {},
-        weights: Array.isArray(saved.weights) ? saved.weights : []
+        weights: Array.isArray(saved.weights) ? saved.weights : [],
+        aiEndpoint: typeof saved.aiEndpoint === "string" ? saved.aiEndpoint : ""
       };
     } catch (error) {
       console.error("Could not read local nutrition data.", error);
@@ -100,6 +101,7 @@
   let progressPeriod = 7;
   let recipeShuffle = 0;
   let assistantMessages = [];
+  let assistantRequestPending = false;
   let toastTimer;
 
   function save() {
@@ -143,6 +145,21 @@
     const manual = customGoal >= 1200 && customGoal <= 6000;
     const calories = manual ? round(customGoal) : estimatedCalories;
     return { calories, estimatedCalories, manual, protein: round((calories * .25) / 4), carbs: round((calories * .45) / 4), fat: round((calories * .30) / 9), bmr: round(bmr), maintenance: round(base) };
+  }
+
+  function calorieGoalControlMarkup(goal) {
+    return `<div class="calorie-goal-control"><span>Daily target <strong>${goal.calories} kcal</strong>${goal.manual ? " · personal" : " · estimate"}</span><div class="calorie-goal-buttons"><button class="secondary-button small-button" type="button" aria-label="Decrease calorie target by 100 kcal" data-action="adjust-calorie-goal" data-delta="-100" ${goal.calories <= 1200 ? "disabled" : ""}>− 100</button><button class="secondary-button small-button" type="button" aria-label="Increase calorie target by 100 kcal" data-action="adjust-calorie-goal" data-delta="100" ${goal.calories >= 6000 ? "disabled" : ""}>＋ 100</button></div></div>`;
+  }
+
+  function adjustCalorieGoal(delta) {
+    const goal = targets();
+    const next = Math.max(1200, Math.min(6000, goal.calories + num(delta)));
+    if (next === goal.calories) return toast(`The daily target is already at the ${next.toLocaleString()} kcal ${next === 1200 ? "minimum" : "maximum"}.`, true);
+    state.profile.calorieGoal = next;
+    if (save()) {
+      render();
+      toast(`Daily calorie target adjusted to ${next.toLocaleString()} kcal.`);
+    }
   }
 
   function showToast(message, error = false) {
@@ -224,12 +241,12 @@
           <div class="eyebrow">Daily energy</div><h2 class="card-title">Calories</h2>
           <div class="calorie-stats"><div><span class="stat-label">Eaten</span><span class="stat-value">${round(t.calories)} <small>kcal</small></span></div><div><span class="stat-label">${remaining >= 0 ? "Remaining" : "Over goal"}</span><span class="stat-value">${Math.abs(round(remaining))} <small>kcal</small></span></div></div>
         </div><div class="ring-wrap"><svg class="ring" viewBox="0 0 100 100" aria-label="${round(ratio * 100)} percent of calorie goal"><circle class="ring-track" cx="50" cy="50" r="42"></circle><circle class="ring-value" cx="50" cy="50" r="42" stroke-dasharray="264" stroke-dashoffset="${264 * (1 - ratio)}"></circle></svg><div class="ring-label"><span class="ring-number">${round(ratio * 100)}%</span><span class="ring-unit">of daily goal</span></div></div>
-        </div><div class="calorie-insight"><strong>${remaining >= 0 ? `${round(remaining)} kcal to go` : `${Math.abs(round(remaining))} kcal over target`}</strong>${goal.manual ? `Your personal target is ${goal.calories} kcal. Adjust it any time in your profile.` : remaining >= 0 ? "Targets are estimates. A flexible, balanced day matters more than a perfect number." : "One day is just one day. Return to your usual routine at your next meal."}</div></section>
+        </div><div class="calorie-insight"><strong>${remaining >= 0 ? `${round(remaining)} kcal to go` : `${Math.abs(round(remaining))} kcal over target`}</strong>${goal.manual ? `Your personal target is ${goal.calories} kcal. Adjust it here or in your profile.` : remaining >= 0 ? "Targets are estimates. A flexible, balanced day matters more than a perfect number." : "One day is just one day. Return to your usual routine at your next meal."}${calorieGoalControlMarkup(goal)}</div></section>
         <section class="card macro-card">${cardTitle("Macros", goal.manual ? "Targets scaled from your manual calorie goal" : "Progress toward today's estimated targets")}<div>${macroLine("Protein", t.protein, goal.protein, "#e9914c")}${macroLine("Carbohydrates", t.carbs, goal.carbs, "#6a9cdb")}${macroLine("Fat", t.fat, goal.fat, "#a48ad4")}</div><div class="macro-footer"><span>Fiber <strong>${round(t.fiber)} g</strong></span><span>Sugar <strong>${round(t.sugar)} g</strong></span><span>Targets <strong>${goal.manual ? "personal" : "estimated"}</strong></span></div></section>
         <section class="card meals-card">${cardTitle("Today's meals", `${day.meals.length} ${day.meals.length === 1 ? "entry" : "entries"}`, `<button class="card-link" data-action="navigate" data-page="food-log">View food log →</button>`)}${mealsHtml}</section>
         <section class="card water-card">${cardTitle("Water", "A gentle nudge to stay hydrated")}<div class="water-summary"><strong>${(day.water / 1000).toFixed(1)} L</strong><span>/ 2.0 L personal reminder</span></div><div class="progress-track"><div class="progress-fill" style="width:${Math.min(100, day.water / 20)}%;--macro-color:#6a9cdb"></div></div><div class="water-glasses">${Array.from({ length: 8 }, (_, i) => `<div class="water-glass ${day.water >= (i + 1) * 250 ? "filled" : ""}" aria-label="${day.water >= (i + 1) * 250 ? "Water logged" : "Water not logged"}">♧</div>`).join("")}</div><div class="water-footer"><button class="secondary-button small-button" data-action="water" data-amount="-250" ${day.water <= 0 ? "disabled" : ""}>− 250 ml</button><button class="secondary-button small-button" data-action="water" data-amount="250">＋ 250 ml</button></div></section>
         <section class="card recommend-card">${cardTitle("A meal idea for you", rec ? `Fits your remaining ${round(Math.max(0, remaining))} kcal` : "Based on what is left in your day", `<button class="card-link" data-action="navigate" data-page="planner">All recipes →</button>`)}${recommendationHtml}</section>
-        <section class="card coach-card">${cardTitle("Your nutrition companion", `<span class="coach-badge">✳ On-device insights</span>`)}<p class="coach-message">${esc(coach)}</p>${assistantInsightsMarkup()}<p class="disclaimer">Suggestions use this browser's food log and estimates—not medical advice or a live AI service.</p><button class="primary-button small-button" data-action="assistant">Ask Nutri a question →</button></section>
+        <section class="card coach-card">${cardTitle("Your nutrition companion", `<span class="coach-badge">✳ On-device insights</span>`)}<p class="coach-message">${esc(coach)}</p>${assistantInsightsMarkup()}<p class="disclaimer">These on-device suggestions use your food log and estimates—not medical advice.</p><button class="primary-button small-button" data-action="assistant">Ask Nutri a question →</button></section>
       </div>`;
   }
 
@@ -531,34 +548,112 @@
     const thread = $("#assistant-thread");
     if (!thread) return;
     const renderAction = (action, style) => `<button class="${style} small-button" data-action="${esc(action.action)}"${action.action === "navigate" ? ` data-page="${esc(action.id)}"` : action.action === "assistant-prompt" ? ` data-prompt="${esc(action.id)}"` : action.id ? ` data-id="${esc(action.id)}"` : ""}>${esc(action.label)}</button>`;
-    thread.innerHTML = assistantMessages.map((message) => `<div class="assistant-bubble ${message.role === "user" ? "user" : "agent"}"><span>${message.role === "user" ? "You" : "Nutri · local insight"}</span><p>${esc(message.text)}</p>${message.action ? `<div class="assistant-bubble-actions">${renderAction(message.action, "secondary-button")}${message.secondAction ? renderAction(message.secondAction, "primary-button") : ""}</div>` : ""}</div>`).join("");
+    thread.innerHTML = assistantMessages.map((message) => {
+      const sources = (message.sources || []).filter((source) => {
+        try { return new URL(source.url).protocol === "https:"; } catch { return false; }
+      });
+      return `<div class="assistant-bubble ${message.role === "user" ? "user" : "agent"}"><span>${message.role === "user" ? "You" : message.live ? "Nutri · OpenAI web search" : "Nutri · local estimate"}</span><p>${esc(message.text)}</p>${sources.length ? `<div class="assistant-sources"><span>Sources</span>${sources.map((source) => `<a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">${esc(source.title || source.url)}</a>`).join("")}</div>` : ""}${message.action ? `<div class="assistant-bubble-actions">${renderAction(message.action, "secondary-button")}${message.secondAction ? renderAction(message.secondAction, "primary-button") : ""}</div>` : ""}</div>`;
+    }).join("");
     thread.scrollTop = thread.scrollHeight;
+    const form = $("#assistant-form");
+    if (form) {
+      $$("input, button[type='submit']", form).forEach((element) => { element.disabled = assistantRequestPending; });
+      form.setAttribute("aria-busy", String(assistantRequestPending));
+    }
   }
 
   function openAssistant() {
-    if (!assistantMessages.length) assistantMessages.push({ role: "assistant", text: "Hi! Ask about calories and macros in a food from my local catalogue, your logged totals, remaining daily target, or a seven-day summary. I can also suggest recipes based on your current target." });
+    if (!assistantMessages.length) assistantMessages.push({ role: "assistant", text: state.aiEndpoint
+      ? "Hi! I can answer general questions using OpenAI with web search and can include today's nutrition summary if you opt in below. Web results can be incomplete or wrong, so check important health information with a qualified professional."
+      : "Hi! I can answer from this browser's small local food catalogue. To ask general questions with OpenAI and web search, connect the secure Cloudflare Worker in your profile. No API key belongs in this page." });
     const quickPrompts = ASSISTANT_PROMPTS.map((prompt) => `<button class="filter-chip" data-action="assistant-prompt" data-prompt="${esc(prompt)}">${esc(prompt)}</button>`).join("");
-    openModal("Your nutrition companion", "Local insights from your food log · not a live AI service", `
-      <div class="assistant-notice"><strong>🔒 Your data stays in this browser.</strong> Replies use your saved profile and logged meals; no AI provider or server is connected. Estimates may be incomplete.</div>
+    const aiStatus = state.aiEndpoint ? "OpenAI web search · endpoint configured" : "Local demo · OpenAI is not connected";
+    openModal("Your nutrition companion", aiStatus, `
+      <div class="assistant-notice"><strong>${state.aiEndpoint ? "Your questions and recent chat turns are sent to OpenAI through your configured Cloudflare proxy." : "No live AI is connected yet."}</strong> ${state.aiEndpoint ? "Today's food names and nutrition totals are included only when you opt in below." : "In local mode, your nutrition data stays in this browser and is not sent to an AI service."} Never put an API key in this app. Answers are not guaranteed accurate or medical advice.</div>
       <div id="assistant-thread" class="assistant-thread" role="log" aria-live="polite" aria-label="Conversation"></div>
       <div class="assistant-prompts" aria-label="Suggested questions">${quickPrompts}</div>
-      <form id="assistant-form" class="assistant-form"><label class="sr-only" for="assistant-prompt-input">Ask your nutrition companion</label><input id="assistant-prompt-input" name="prompt" type="text" maxlength="240" required autocomplete="off" placeholder="Try: calories & macros in 2 idlis"><button class="primary-button" type="submit">Send</button></form>
-      <p class="disclaimer assistant-disclaimer">General wellness information only—not medical advice or a substitute for a qualified healthcare professional. Double-check recipes and allergens.</p>`);
+      ${state.aiEndpoint ? `<label class="assistant-consent"><input id="assistant-share-context" type="checkbox"><span>Include today's logged foods and nutrition totals in requests for more personalized answers. This health data will be sent to OpenAI through the proxy.</span></label>` : ""}
+      <form id="assistant-form" class="assistant-form"><label class="sr-only" for="assistant-prompt-input">Ask your nutrition companion</label><input id="assistant-prompt-input" name="prompt" type="text" maxlength="2000" required autocomplete="off" placeholder="${state.aiEndpoint ? "Ask a question; web search is available" : "Try: calories and macros in 2 idlis"}"><button class="primary-button" type="submit">Send</button></form>
+      <p class="disclaimer assistant-disclaimer">${state.aiEndpoint ? "OpenAI may still make mistakes. Web search sources are linked when available. Do not rely on this assistant for medical decisions." : "To enable OpenAI: configure the Worker in your profile and follow the setup steps in README."} General wellness information only—not medical advice. Double-check nutrition and allergens.</p>`);
     $(".modal", $("#modal-root")).classList.add("assistant-modal");
     renderAssistantMessages();
     $("#assistant-prompt-input")?.focus();
   }
 
-  function submitAssistantPrompt(prompt) {
+  function nutritionSnapshot() {
+    const totals = totalsFor();
+    const goal = targets();
+    return {
+      date: dateKey(activeDate),
+      foods: dayFor().meals.slice(0, 20).map((meal) => String(meal.name || "").slice(0, 80)),
+      logged: { calories: round(totals.calories), protein: round(totals.protein), carbohydrates: round(totals.carbs), fat: round(totals.fat), fiber: round(totals.fiber) },
+      target: { calories: goal.calories, protein: goal.protein, carbohydrates: goal.carbs, fat: goal.fat },
+      remainingCalories: round(goal.calories - totals.calories)
+    };
+  }
+
+  async function askOpenAi(question) {
+    const earlierMessages = assistantMessages
+      .filter((message) => !message.pending)
+      .slice(0, -1)
+      .slice(-8)
+      .map((message) => ({ role: message.role === "user" ? "user" : "assistant", content: message.text }));
+    const body = { question, history: earlierMessages };
+    if ($("#assistant-share-context")?.checked) body.nutrition = nutritionSnapshot();
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+    try {
+      const response = await fetch(state.aiEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || `Assistant request failed (HTTP ${response.status}).`);
+      if (typeof result?.answer !== "string" || !result.answer.trim()) throw new Error("The AI service returned an empty answer. Please try again.");
+      return { answer: result.answer.trim().slice(0, 12000), sources: Array.isArray(result.sources) ? result.sources.slice(0, 8) : [] };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function submitAssistantPrompt(prompt) {
     const text = String(prompt || "").trim();
-    if (!text || text.length > 240) return;
+    if (!text || text.length > 2000 || assistantRequestPending) return;
     assistantMessages.push({ role: "user", text });
-    const reply = assistantReply(text);
-    assistantMessages.push({ role: "assistant", text: reply.text, action: reply.action, secondAction: reply.secondAction });
+    if (!state.aiEndpoint) {
+      const reply = assistantReply(text);
+      assistantMessages.push({ role: "assistant", text: reply.text, action: reply.action, secondAction: reply.secondAction });
+      if (assistantMessages.length > 24) assistantMessages = assistantMessages.slice(-24);
+      renderAssistantMessages();
+      const input = $("#assistant-prompt-input");
+      if (input) { input.value = ""; input.focus(); }
+      return;
+    }
+
+    assistantRequestPending = true;
+    assistantMessages.push({ role: "assistant", text: "Searching current sources and preparing an answer…", pending: true });
     if (assistantMessages.length > 24) assistantMessages = assistantMessages.slice(-24);
     renderAssistantMessages();
     const input = $("#assistant-prompt-input");
-    if (input) { input.value = ""; input.focus(); }
+    if (input) input.value = "";
+    try {
+      const result = await askOpenAi(text);
+      const pending = assistantMessages.findIndex((message) => message.pending);
+      if (pending >= 0) assistantMessages[pending] = { role: "assistant", text: result.answer, sources: result.sources, live: true };
+    } catch (error) {
+      console.error("OpenAI assistant request failed.", error);
+      const message = error.name === "AbortError" ? "The answer took too long. Please try again." : error.message || "The AI service couldn't answer. Please check the proxy configuration and try again.";
+      const pending = assistantMessages.findIndex((entry) => entry.pending);
+      if (pending >= 0) assistantMessages[pending] = { role: "assistant", text: message };
+    } finally {
+      assistantRequestPending = false;
+      renderAssistantMessages();
+      const field = $("#assistant-prompt-input");
+      if (field) field.focus();
+    }
   }
 
   function renderFoodLog() {
@@ -706,17 +801,18 @@
       <div class="field"><label for="profile-target-weight">Target weight · kg</label><input id="profile-target-weight" name="targetWeight" type="number" min="30" max="300" step="0.1" value="${esc(p.targetWeight)}" required></div>
       <div class="field"><label for="profile-activity">Activity level</label><select id="profile-activity" name="activity"><option value="1.2" ${num(p.activity) === 1.2 ? "selected" : ""}>Mostly sitting · little exercise</option><option value="1.4" ${num(p.activity) === 1.4 ? "selected" : ""}>Light activity · 1–3 days/week</option><option value="1.55" ${num(p.activity) === 1.55 ? "selected" : ""}>Moderate activity · 3–5 days/week</option><option value="1.725" ${num(p.activity) === 1.725 ? "selected" : ""}>Very active · 6–7 days/week</option><option value="1.9" ${num(p.activity) === 1.9 ? "selected" : ""}>Highly active · physical work</option></select></div>
       <div class="field"><label for="profile-goal">Fitness goal</label><select id="profile-goal" name="goal"><option value="lose" ${p.goal === "lose" ? "selected" : ""}>Gradual weight loss</option><option value="maintain" ${p.goal === "maintain" ? "selected" : ""}>Maintain my weight</option><option value="gain" ${p.goal === "gain" ? "selected" : ""}>Gradual weight gain</option></select></div>
-      <div class="field"><label for="profile-calorie-goal">Daily calorie target · optional</label><input id="profile-calorie-goal" name="calorieGoal" type="number" min="1200" max="6000" step="50" value="${p.calorieGoal ? esc(p.calorieGoal) : ""}" placeholder="${goal.estimatedCalories} (auto estimate)"><small>Set a personal target from 1,200–6,000 kcal. Leave blank to use your profile estimate. Macro targets scale with this choice.</small></div>
+      <div class="field"><label for="profile-calorie-goal">Daily calorie target · optional</label><input id="profile-calorie-goal" name="calorieGoal" type="number" min="1200" max="6000" step="1" value="${p.calorieGoal ? esc(p.calorieGoal) : ""}" placeholder="${goal.estimatedCalories} (auto estimate)"><small>Set a personal target from 1,200–6,000 kcal. Leave blank to use your profile estimate. Macro targets scale with this choice.</small></div>
+      <div class="field full"><label for="profile-ai-endpoint">Secure AI proxy URL · optional</label><input id="profile-ai-endpoint" name="aiEndpoint" type="url" inputmode="url" maxlength="300" value="${esc(state.aiEndpoint)}" placeholder="https://your-worker.your-subdomain.workers.dev/chat"><small>Enter the /chat URL for your deployed NutriTrack Cloudflare Worker. OpenAI API keys must stay in the Worker secret settings—never paste a key here or in browser code. Without a configured endpoint, chat uses the local demo.</small></div>
       <div class="field"><label for="profile-diet">Dietary preference</label><select id="profile-diet" name="diet">${["No preference", "Vegetarian", "Vegan", "Eggetarian", "Pescatarian"].map((diet) => `<option ${p.diet === diet ? "selected" : ""}>${diet}</option>`).join("")}</select></div>
       <div class="field"><label for="profile-cuisine">Preferred cuisine</label><select id="profile-cuisine" name="cuisine">${["South Indian", "North Indian", "Maharashtrian", "Bengali", "Gujarati", "Punjabi", "Coastal Indian", "Any cuisine"].map((cuisine) => `<option ${p.cuisine === cuisine ? "selected" : ""}>${cuisine}</option>`).join("")}</select></div>
       <div class="field full"><label for="profile-allergies">Allergies or foods to avoid</label><input id="profile-allergies" name="allergies" value="${esc(p.allergies)}" maxlength="200" placeholder="e.g. peanuts, dairy"><small>Recommendations use basic keyword matching only. Always verify ingredients and cross-contamination independently.</small></div>
       </div><div class="form-actions"><button class="primary-button">Save my profile</button></div></form>`;
-    const summary = `<div class="target-summary"><strong>${goal.manual ? "Your manual daily targets" : "Daily estimates"}</strong>${[["Calories", `${goal.calories} kcal`], ["Protein", `${goal.protein} g`], ["Carbohydrates", `${goal.carbs} g`], ["Fat", `${goal.fat} g`]].map(([label, value]) => `<div class="target-row"><span>${label}</span><b>${value}</b></div>`).join("")}</div>
+    const summary = `<div class="target-summary"><strong>${goal.manual ? "Your manual daily targets" : "Daily estimates"}</strong>${[["Calories", `${goal.calories} kcal`], ["Protein", `${goal.protein} g`], ["Carbohydrates", `${goal.carbs} g`], ["Fat", `${goal.fat} g`]].map(([label, value]) => `<div class="target-row"><span>${label}</span><b>${value}</b></div>`).join("")}</div>${calorieGoalControlMarkup(goal)}
       <p class="disclaimer" style="margin-top:12px">${goal.manual ? `Your calorie goal is manually set. Your macro targets are scaled from it using the same 25/45/30% split.` : `Estimated with Mifflin–St Jeor BMR × activity factor. Gender-unspecified uses a midpoint constant; goal adjustment is −400/0/+250 kcal and macros are 25/45/30% of calories.`} These are broad adult estimates, not medical guidance. Consult a qualified professional for personalized care.</p>`;
     return `${heading("Your profile", "Personalize your estimates and discover meals that fit your preferences.")}
       <div class="profile-layout"><section class="card">${cardTitle("A little about you", "All fields stay in this browser on this device")}${profileForm}</section>
       <aside class="grid"><section class="card">${cardTitle(goal.manual ? "Your target guidance" : "How targets are estimated", goal.manual ? "Manual calorie target and scaled macros" : "Transparent, adjustable guidance")}${summary}<div class="callout" style="margin-top:12px">Calorie needs vary widely. The 1,200 kcal minimum is a conservative app floor, not a recommendation. Seek advice from a registered dietitian or clinician if you have a medical condition, are pregnant, or are under 18.</div></section>
-      <section class="card">${cardTitle("Your data & privacy", "No account or cloud service is configured")}<p class="card-subtitle">Profile, food log, planner, favorites and check-ins are stored in this browser's local storage. Anyone using this browser profile may be able to access them. This is a local demo, not secure health-record storage.</p><div class="heading-actions" style="margin-top:15px"><button class="secondary-button small-button" data-action="export-data">Export my data</button><button class="danger-button small-button" data-action="delete-data">Delete all local data</button></div><p class="disclaimer" style="margin-top:12px">Deleting local data cannot revoke screenshots, downloads or browser backups. Exported JSON files may contain sensitive personal information.</p></section></aside></div>`;
+      <section class="card">${cardTitle("Your data & privacy", "No account or cloud-synced storage")}<p class="card-subtitle">Profile, food log, planner, favorites and check-ins are stored in this browser's local storage and are not synced. If OpenAI is configured, chat messages go to OpenAI through the Worker; food names and nutrition totals are sent only when you opt in in chat. Anyone using this browser profile may be able to access local data. This is not secure health-record storage.</p><div class="heading-actions" style="margin-top:15px"><button class="secondary-button small-button" data-action="export-data">Export my data</button><button class="danger-button small-button" data-action="delete-data">Delete all local data</button></div><p class="disclaimer" style="margin-top:12px">Deleting local data cannot revoke screenshots, downloads or browser backups. Exported JSON files may contain sensitive personal information.</p></section></aside></div>`;
   }
 
   function openModal(title, subtitle, body) {
@@ -859,6 +955,7 @@
     if (!button) return;
     const { action, id, page } = button.dataset;
     if (action === "navigate") { activePage = page; render(); return; }
+    if (action === "adjust-calorie-goal") { adjustCalorieGoal(button.dataset.delta); return; }
     if (action === "assistant") { openAssistant(); return; }
     if (action === "assistant-prompt") { submitAssistantPrompt(button.dataset.prompt || id); return; }
     if (action === "assistant-water") {
@@ -1017,11 +1114,22 @@
       event.preventDefault();
       if (!form.reportValidity()) return;
       const values = Object.fromEntries(new FormData(form).entries());
+      const aiEndpoint = String(values.aiEndpoint || "").trim();
+      delete values.aiEndpoint;
       const numbers = ["age", "height", "weight", "targetWeight", "activity", "calorieGoal"];
       numbers.forEach((key) => { values[key] = num(values[key]); });
       if (values.age < 15 || values.age > 100 || values.height < 100 || values.height > 230 || values.weight < 30 || values.weight > 300 || values.targetWeight < 30 || values.targetWeight > 300 || (values.calorieGoal !== 0 && (values.calorieGoal < 1200 || values.calorieGoal > 6000))) return toast("Check the entered age, height, weight, and optional 1,200–6,000 kcal target ranges.", true);
+      if (aiEndpoint) {
+        try {
+          const endpoint = new URL(aiEndpoint);
+          if ((endpoint.protocol !== "https:" && !(endpoint.protocol === "http:" && ["localhost", "127.0.0.1"].includes(endpoint.hostname))) || endpoint.username || endpoint.password || endpoint.pathname !== "/chat" || endpoint.search || endpoint.hash) throw new Error("invalid endpoint");
+        } catch {
+          return toast("Use your secure HTTPS Cloudflare Worker URL. HTTP is allowed only for localhost testing.", true);
+        }
+      }
       state.profile = { ...state.profile, ...values };
-      if (save()) { render(); toast(values.calorieGoal ? "Your profile and personal calorie target are updated." : "Your profile and estimated targets are updated."); }
+      state.aiEndpoint = aiEndpoint;
+      if (save()) { render(); toast(aiEndpoint ? "Your profile, calorie target, and assistant settings are updated." : values.calorieGoal ? "Your profile and personal calorie target are updated." : "Your profile and estimated targets are updated."); }
       return;
     }
     if (formId === "plan-form") {

@@ -29,7 +29,8 @@ NutriTrack AI is a responsive nutrition-tracking demo built with plain HTML, CSS
 - **Food logging:** Indian food catalogue, custom foods, editable portions, favorites, recent entries, and date-specific logs.
 - **Meal planning:** recipe ideas, daily and weekly plans, portion adjustments, replacements, and categorized shopping lists.
 - **Progress:** seven- and 30-day summaries, food-log charts, and weight check-ins.
-- **Nutrition companion:** automatic suggestions based on local profile and meal data; interactive answers about today's totals, macros, and logged weekly averages.
+- **Nutrition companion:** ask about calories and macros in catalogue foods and recipes (for example, `Calories and macros in 2 idlis?`), your logged totals, remaining daily target, or seven-day averages. Answers use reference servings saved in the app.
+- **Flexible calorie target:** optionally set a personal daily calorie target in your profile; leave it blank to return to the calculated estimate. Macro targets, daily progress, and meal suggestions update with your choice.
 - **Comfortable on mobile:** responsive layouts, light and dark themes, and touch-friendly navigation.
 - **Local data controls:** edit your profile, export your data as JSON, or delete it from this browser.
 
@@ -51,10 +52,10 @@ GitHub Pages publishes the `main` branch through the **Publish NutriTrack AI** w
 
 This is a **local demo**, not a connected AI or clinical product.
 
-- There is no configured sign-in, backend, cloud database, external nutrition service, live AI model, camera barcode service, or food-image recognition. The companion and recommendations use deterministic rules in the browser; chat messages remain in memory until the page reloads.
+- There is no configured sign-in, backend, cloud database, external nutrition service, live AI model, camera barcode service, or food-image recognition. The companion and recommendations use deterministic rules and the small food/recipe catalogue in the browser; chat messages remain in memory until the page reloads. If a food is not in the catalogue, the companion says so rather than inventing nutrition facts.
 - Profile, planner, check-ins, and food logs are saved in this browser's `localStorage`. The app does not send them to a server, but browser-local storage is not encrypted or secure per-user storage. Anyone with access to this browser profile may be able to read it.
 - Nutrition figures for foods and recipes are illustrative estimates. Barcode lookup uses a small sample catalogue. Food photos are previewed locally; any nutrition estimate must be entered by the user.
-- Daily targets use Mifflin–St Jeor, an activity factor, an estimated goal adjustment, and a broad macro split. They are not individualized medical guidance. Logs may be incomplete, and targets should not be treated as requirements or a measure of success.
+- Automatically calculated daily targets use Mifflin–St Jeor, an activity factor, an estimated goal adjustment, and a broad macro split. You can instead enter a manual daily target from 1,200 to 6,000 kcal; this app cannot determine whether a target is appropriate for you, and derived macro targets are only a rough 25/45/30% split. Neither option is individualized medical guidance. Logs may be incomplete, and targets should not be treated as requirements or a measure of success.
 - This app does not verify allergens or cross-contamination. Check ingredient labels and consult a qualified healthcare professional for advice specific to your health.
 
 **Do not use NutriTrack AI for diagnosis, treatment, or emergency decisions.** It is not a substitute for a registered dietitian or other qualified healthcare professional.

@@ -34,6 +34,18 @@ NutriTrack AI is a responsive nutrition-tracking demo built with plain HTML, CSS
 - **Comfortable on mobile:** responsive layouts, light and dark themes, and touch-friendly navigation.
 - **Local data controls:** edit your profile, export your data as JSON, or delete it from this browser.
 
+## Save and reuse your own foods
+
+Use the custom-food library for a homemade recipe, packaged product, or everyday item that is not already in the built-in food search:
+
+1. Open **Food Log** and select **Create custom food** above the search results.
+2. Enter a food name, its usual serving size (for example, `2 dosa · 150 g`), and the meal category.
+3. Enter calories, protein, carbohydrates, fat, fiber, and sugar for **one serving**. Enter `0` when a value is unknown or not listed; values are user-provided estimates and are not independently verified.
+4. Select **Save to my foods**. Search by the food name or serving description, or filter by meal category. Saved items are marked **Custom**.
+5. Select **＋** beside the saved item to open the normal food logger. Choose how many portions you ate and add it to that day's log; all logged nutrition totals scale from the saved per-serving values.
+
+Use the heart to add a saved item to **Your favorites**. Select the edit control to update its details, or the remove control to take it out of saved search. Removal asks for confirmation, also clears its favorite, and **does not delete food entries already in your diary**. The app allows up to 100 saved custom foods; custom names must be unique. Custom foods are stored only in this browser's local storage, included in a data export, and removed by **Delete all local data**. They do not sync to another device or account.
+
 ## Get started
 
 No package manager, dependencies, API keys, or build step are needed. Clone the repository and open `index.html` in a current browser. For local HTTP preview, run:
